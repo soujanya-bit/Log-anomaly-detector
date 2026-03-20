@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Log Anomaly Detector</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 32px 16px;
+    }
+
+    .container { max-width: 900px; margin: 0 auto; }
+
+    header { margin-bottom: 32px; }
+    header h1 { font-size: 1.8rem; font-weight: 700; color: #fff; }
+    header h1 span { color: #f56565; }
+    header p { color: #718096; margin-top: 6px; font-size: 0.95rem; }
+
+    .card {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+
+    label { font-size: 0.85rem; color: #a0aec0; display: block; margin-bottom: 8px; }
+
+    textarea {
+      width: 100%;
+      height: 220px;
+      background: #0f1117;
+      border: 1px solid #2d3148;
+      border-radius: 8px;
+      color: #e2e8f0;
+      font-family: 'Courier New', monospace;
+      font-size: 0.82rem;
+      padding: 12px;
+      resize: vertical;
+      outline: none;
+      transition: border 0.2s;
+    }
+    textarea:focus { border-color: #4f6ef7; }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .slider-group { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .slider-group label { margin: 0; white-space: nowrap; }
+    input[type=range] { flex: 1; accent-color: #4f6ef7; }
+    #contam-val { color: #fff; font-weight: 600; min-width: 36px; }
+
+    button {
+      background: #4f6ef7;
+      color: white;
+      border: none;
+      padding: 10px 28px;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #3b55d4; }
+    button:disabled { background: #2d3148; color: #555; cursor: not-allowed; }
+
+    #load-sample {
+      background: transparent;
+      border: 1px solid #2d3148;
+      color: #a0aec0;
+      padding: 10px 20px;
+      font-size: 0.85rem;
+      font-weight: 400;
+    }
+    #load-sample:hover { border-color: #4f6ef7; color: #fff; background: transparent; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .stat {
+      background: #1a1d27;
+      border: 1px solid #2d3148;
+      border-radius: 10px;
+      padding: 16px;
+      text-align: center;
+    }
+    .stat .val { font-size: 1.6rem; font-weight: 700; color: #fff; }
+    .stat .val.red { color: #f56565; }
+    .stat .val.yellow { color: #f6c90e; }
+    .stat .val.green { color: #48bb78; }
+    .stat .lbl { font-size: 0.75rem; color: #718096; margin-top: 4px; }
+
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .results-header h3 { font-size: 1rem; color: #a0aec0; }
+    .filter-btns { display: flex; gap: 8px; }
+    .filter-btn {
+      background: transparent;
+      border: 1px solid #2d3148;
+      color: #718096;
+      padding: 5px 14px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      border-radius: 6px;
+    }
+    .filter-btn.active { border-color: #4f6ef7; color: #4f6ef7; background: rgba(79,110,247,0.1); }
+
+    .log-list { display: flex; flex-direction: column; gap: 6px; max-height: 480px; overflow-y: auto; }
+
+    .log-item {
+      background: #0f1117;
+      border: 1px solid #1e2235;
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-family: 'Courier New', monospace;
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: border 0.15s;
+    }
+    .log-item.anomaly {
+      border-color: #f56565;
+      background: rgba(245, 101, 101, 0.05);
+    }
+
+    .badge {
+      font-size: 0.7rem;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .badge.s5xx { background: rgba(245,101,101,0.15); color: #f56565; }
+    .badge.s4xx { background: rgba(246,201,14,0.15); color: #f6c90e; }
+    .badge.s2xx { background: rgba(72,187,120,0.15); color: #48bb78; }
+    .badge.s3xx { background: rgba(160,174,192,0.1); color: #718096; }
+
+    .log-raw { flex: 1; color: #a0aec0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .log-item.anomaly .log-raw { color: #e2e8f0; }
+
+    .score {
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: #f56565;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .anomaly-tag {
+      font-size: 0.7rem;
+      background: rgba(245,101,101,0.2);
+      color: #f56565;
+      padding: 2px 8px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .reasons {
+      font-size: 0.72rem;
+      color: #f6c90e;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex-shrink: 0;
+      max-width: 220px;
+    }
+
+    #error-msg {
+      background: rgba(245,101,101,0.1);
+      border: 1px solid #f56565;
+      color: #f56565;
+      border-radius: 8px;
+      padding: 12px 16px;
+      font-size: 0.9rem;
+      margin-bottom: 16px;
+      display: none;
+    }
+
+    .spinner {
+      display: none;
+      text-align: center;
+      padding: 32px;
+      color: #4f6ef7;
+      font-size: 0.9rem;
+    }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Log Anomaly <span>Detector</span></h1>
+    <p>Paste Apache/Nginx server logs — Isolation Forest ML flags anomalies in real time.</p>
+  </header>
+
+  <div class="card">
+    <label>PASTE SERVER LOGS (Apache/Nginx format, one line per entry)</label>
+    <textarea id="log-input" placeholder='192.168.1.10 - - [15/Jan/2024:09:00:01] "GET /api/users HTTP/1.1" 200 1024 0.045&#10;...'></textarea>
+    <div class="controls">
+      <button id="load-sample">Load Sample Logs</button>
+      <div class="slider-group">
+        <label>Sensitivity</label>
+        <input type="range" id="contamination" min="5" max="40" value="10" step="5" />
+        <span id="contam-val">10%</span>
+      </div>
+      <button id="analyze-btn">Analyze Logs</button>
+    </div>
+  </div>
+
+  <div id="error-msg"></div>
+  <div class="spinner" id="spinner">⚙ Analyzing logs...</div>
+
+  <div id="results" style="display:none">
+    <div class="summary-grid" id="summary"></div>
+
+    <div class="card">
+      <div class="results-header">
+        <h3>LOG ENTRIES</h3>
+        <div class="filter-btns">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="anomaly">Anomalies only</button>
+        </div>
+      </div>
+      <div class="log-list" id="log-list"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const SAMPLE_LOGS = `192.168.1.10 - - [15/Jan/2024:09:00:01] "GET /api/users HTTP/1.1" 200 1024 0.045
+192.168.1.11 - - [15/Jan/2024:09:00:03] "GET /api/products HTTP/1.1" 200 2048 0.062
+192.168.1.12 - - [15/Jan/2024:09:00:05] "POST /api/orders HTTP/1.1" 201 512 0.071
+192.168.1.10 - - [15/Jan/2024:09:00:07] "GET /api/users HTTP/1.1" 200 1024 0.048
+192.168.1.13 - - [15/Jan/2024:09:00:09] "GET /api/products HTTP/1.1" 200 2048 0.058
+192.168.1.14 - - [15/Jan/2024:09:00:11] "GET /api/users HTTP/1.1" 200 1024 0.051
+192.168.1.15 - - [15/Jan/2024:09:00:13] "PUT /api/orders HTTP/1.1" 200 768 0.340
+192.168.1.10 - - [15/Jan/2024:09:00:15] "GET /api/products HTTP/1.1" 200 2048 0.060
+192.168.1.16 - - [15/Jan/2024:09:00:17] "GET /api/users HTTP/1.1" 200 1024 0.047
+192.168.1.17 - - [15/Jan/2024:09:00:19] "POST /api/orders HTTP/1.1" 500 256 1.823
+192.168.1.18 - - [15/Jan/2024:09:00:21] "GET /api/users HTTP/1.1" 200 1024 0.049
+192.168.1.17 - - [15/Jan/2024:09:00:23] "POST /api/orders HTTP/1.1" 500 256 2.100
+192.168.1.19 - - [15/Jan/2024:09:00:25] "GET /api/products HTTP/1.1" 200 2048 0.055
+192.168.1.20 - - [15/Jan/2024:09:00:27] "GET /api/users HTTP/1.1" 200 1024 0.046
+192.168.1.21 - - [15/Jan/2024:09:00:29] "POST /api/payments HTTP/1.1" 503 128 4.500
+192.168.1.10 - - [15/Jan/2024:09:00:31] "GET /api/users HTTP/1.1" 200 1024 0.050
+192.168.1.22 - - [15/Jan/2024:09:00:33] "GET /api/products HTTP/1.1" 200 2048 0.063
+192.168.1.23 - - [15/Jan/2024:09:00:35] "GET /api/auth HTTP/1.1" 401 64 0.088
+192.168.1.10 - - [15/Jan/2024:09:00:37] "GET /api/users HTTP/1.1" 200 1024 0.044
+192.168.1.24 - - [15/Jan/2024:09:00:39] "GET /api/orders HTTP/1.1" 200 1536 0.069
+192.168.1.25 - - [15/Jan/2024:09:00:41] "GET /api/users HTTP/1.1" 200 1024 0.052
+192.168.1.26 - - [15/Jan/2024:09:00:43] "POST /api/payments HTTP/1.1" 200 512 0.890
+192.168.1.27 - - [15/Jan/2024:09:00:45] "GET /api/products HTTP/1.1" 200 2048 0.057
+192.168.1.21 - - [15/Jan/2024:09:00:47] "POST /api/payments HTTP/1.1" 500 128 5.200
+192.168.1.10 - - [15/Jan/2024:09:00:49] "GET /api/users HTTP/1.1" 200 1024 0.048
+192.168.1.28 - - [15/Jan/2024:09:00:51] "GET /api/orders HTTP/1.1" 200 1536 0.073
+192.168.1.29 - - [15/Jan/2024:09:00:53] "GET /api/users HTTP/1.1" 200 1024 0.045
+192.168.1.30 - - [15/Jan/2024:09:00:55] "DELETE /api/database HTTP/1.1" 500 0 3.200
+192.168.1.10 - - [15/Jan/2024:09:00:57] "GET /api/users HTTP/1.1" 200 1024 0.047
+192.168.1.31 - - [15/Jan/2024:09:00:59] "GET /api/products HTTP/1.1" 200 2048 0.061`;
+
+  let allResults = [];
+  let currentFilter = 'all';
+
+  const slider = document.getElementById('contamination');
+  const contamVal = document.getElementById('contam-val');
+  slider.addEventListener('input', () => contamVal.textContent = slider.value + '%');
+
+  document.getElementById('load-sample').addEventListener('click', () => {
+    document.getElementById('log-input').value = SAMPLE_LOGS;
+  });
+
+  document.querySelectorAll('.filter-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      currentFilter = btn.dataset.filter;
+      renderLogs();
+    });
+  });
+
+  document.getElementById('analyze-btn').addEventListener('click', async () => {
+    const logs = document.getElementById('log-input').value.trim();
+    const contamination = parseInt(slider.value) / 100;
+    const errEl = document.getElementById('error-msg');
+    const spinner = document.getElementById('spinner');
+    const btn = document.getElementById('analyze-btn');
+
+    errEl.style.display = 'none';
+    document.getElementById('results').style.display = 'none';
+
+    if (!logs) {
+      errEl.textContent = 'Please paste some logs or load the sample.';
+      errEl.style.display = 'block';
+      return;
+    }
+
+    btn.disabled = true;
+    spinner.style.display = 'block';
+
+    try {
+      const res = await fetch('http://127.0.0.1:8000/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logs, contamination })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        errEl.textContent = `Error: ${err.detail}`;
+        errEl.style.display = 'block';
+        return;
+      }
+
+      const data = await res.json();
+      allResults = data;
+      renderSummary(data);
+      renderLogs();
+      document.getElementById('results').style.display = 'block';
+
+    } catch (e) {
+      errEl.textContent = 'Could not connect to backend. Make sure uvicorn is running on port 8000.';
+      errEl.style.display = 'block';
+    } finally {
+      btn.disabled = false;
+      spinner.style.display = 'none';
+    }
+  });
+
+  function renderSummary(results) {
+    const total = results.length;
+    const anomalies = results.filter(r => r.is_anomaly).length;
+    const anomalyRate = total > 0 ? ((anomalies / total) * 100).toFixed(1) : 0;
+    const avgRT = (results.reduce((s, r) => s + r.response_time, 0) / total).toFixed(3);
+    const maxRT = Math.max(...results.map(r => r.response_time)).toFixed(3);
+
+    const errorPaths = results.filter(r => r.status_code >= 400);
+    const pathCounts = errorPaths.reduce((acc, r) => {
+      acc[r.path] = (acc[r.path] || 0) + 1; return acc;
+    }, {});
+    const topErrorPath = Object.keys(pathCounts).length > 0
+      ? Object.entries(pathCounts).sort((a,b) => b[1]-a[1])[0][0]
+      : 'None';
+
+    const rateColor = anomalyRate > 20 ? 'red' : anomalyRate > 10 ? 'yellow' : 'green';
+
+    document.getElementById('summary').innerHTML = `
+      <div class="stat"><div class="val">${total}</div><div class="lbl">Total Lines</div></div>
+      <div class="stat"><div class="val red">${anomalies}</div><div class="lbl">Anomalies</div></div>
+      <div class="stat"><div class="val ${rateColor}">${anomalyRate}%</div><div class="lbl">Anomaly Rate</div></div>
+      <div class="stat"><div class="val yellow">${avgRT}s</div><div class="lbl">Avg Response</div></div>
+      <div class="stat"><div class="val red">${maxRT}s</div><div class="lbl">Max Response</div></div>
+      <div class="stat"><div class="val" style="font-size:0.85rem;word-break:break-all">${topErrorPath}</div><div class="lbl">Top Error Path</div></div>
+    `;
+  }
+
+  function statusBadgeClass(code) {
+    if (code >= 500) return 's5xx';
+    if (code >= 400) return 's4xx';
+    if (code >= 300) return 's3xx';
+    return 's2xx';
+  }
+
+  function renderLogs() {
+    const list = document.getElementById('log-list');
+    const filtered = currentFilter === 'anomaly'
+      ? allResults.filter(r => r.is_anomaly)
+      : allResults;
+
+    if (filtered.length === 0) {
+      list.innerHTML = '<div style="text-align:center;padding:24px;color:#718096">No anomalies detected with current sensitivity.</div>';
+      return;
+    }
+
+    list.innerHTML = filtered.map(r => `
+      <div class="log-item ${r.is_anomaly ? 'anomaly' : ''}">
+        <span class="badge ${statusBadgeClass(r.status_code)}">${r.status_code}</span>
+        <span class="badge" style="background:rgba(79,110,247,0.15);color:#4f6ef7">${r.method}</span>
+        <span class="log-raw">${r.raw}</span>
+        ${r.reasons && r.reasons.length > 0 ? `<span class="reasons">⚑ ${r.reasons.join(' · ')}</span>` : ''}
+        ${r.is_anomaly ? `<span class="anomaly-tag">⚠ ANOMALY</span><span class="score">${(r.anomaly_score * 100).toFixed(0)}</span>` : ''}
+      </div>
+    `).join('');
+  }
+</script>
+</body>
+</html>
